@@ -39,5 +39,11 @@ namespace NGitLab.Models
 
         [JsonPropertyName("epic_id")]
         public int? EpicId;
+
+        [JsonPropertyName("updated_at")]
+        [JsonConverter(typeof(DateOnlyConverter))]
+        public DateTime? UpdatedAt;
+        
+
     }
 }

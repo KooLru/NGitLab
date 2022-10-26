@@ -36,5 +36,9 @@ namespace NGitLab.Models
 
         [JsonPropertyName("epic_id")]
         public int? EpicId;
+
+        [JsonPropertyName("created_at")]
+        [JsonConverter(typeof(DateTimeConverter))]
+        public DateTime? CreatedAt;
     }
 }
