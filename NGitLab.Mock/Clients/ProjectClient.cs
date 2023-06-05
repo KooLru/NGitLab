@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -26,7 +27,7 @@ namespace NGitLab.Mock.Clients
                     if (project == null || !project.CanUserViewProject(Context.User))
                         throw new GitLabNotFoundException();
 
-                    return project.ToClientProject();
+                    return project.ToClientProject(Context.User);
                 }
             }
         }
@@ -38,7 +39,7 @@ namespace NGitLab.Mock.Clients
                 using (Context.BeginOperationScope())
                 {
                     var project = GetProject(fullName, ProjectPermission.View);
-                    return project.ToClientProject();
+                    return project.ToClientProject(Context.User);
                 }
             }
         }
@@ -49,7 +50,7 @@ namespace NGitLab.Mock.Clients
             {
                 using (Context.BeginOperationScope())
                 {
-                    return Server.AllProjects.Where(project => project.IsUserMember(Context.User)).Select(project => project.ToClientProject()).ToList();
+                    return Server.AllProjects.Where(project => project.IsUserMember(Context.User)).Select(project => project.ToClientProject(Context.User)).ToList();
                 }
             }
         }
@@ -60,7 +61,7 @@ namespace NGitLab.Mock.Clients
             {
                 using (Context.BeginOperationScope())
                 {
-                    return Server.AllProjects.Where(project => project.IsUserOwner(Context.User)).Select(project => project.ToClientProject()).ToList();
+                    return Server.AllProjects.Where(project => project.IsUserOwner(Context.User)).Select(project => project.ToClientProject(Context.User)).ToList();
                 }
             }
         }
@@ -71,7 +72,7 @@ namespace NGitLab.Mock.Clients
             {
                 using (Context.BeginOperationScope())
                 {
-                    return Server.AllProjects.Where(project => project.CanUserViewProject(Context.User)).Select(project => project.ToClientProject()).ToList();
+                    return Server.AllProjects.Where(project => project.CanUserViewProject(Context.User)).Select(project => project.ToClientProject(Context.User)).ToList();
                 }
             }
         }
@@ -93,7 +94,7 @@ namespace NGitLab.Mock.Clients
                 };
 
                 parentGroup.Projects.Add(newProject);
-                return newProject.ToClientProject();
+                return newProject.ToClientProject(Context.User);
             }
         }
 
@@ -150,7 +151,7 @@ namespace NGitLab.Mock.Clients
                 var project = GetProject(id, ProjectPermission.View);
                 var group = forkProject.Namespace != null ? GetParentGroup(forkProject.Namespace) : Context.User.Namespace;
                 var newProject = project.Fork(group, Context.User, forkProject.Name);
-                return newProject.ToClientProject();
+                return newProject.ToClientProject(Context.User);
             }
         }
 
@@ -160,13 +161,8 @@ namespace NGitLab.Mock.Clients
             {
                 if (query.MinAccessLevel != null
                  || query.LastActivityAfter != null
-                 || query.OrderBy != null
-                 || query.PerPage != null
                  || query.Search != null
-                 || query.Statistics != null
-                 || query.Ascending != null
-                 || query.Simple != null
-                 || query.UserId != null)
+                 || query.Statistics is true)
                 {
                     throw new NotImplementedException();
                 }
@@ -203,7 +199,28 @@ namespace NGitLab.Mock.Clients
                     projects = projects.Where(p => query.Topics.All(t => p.Topics.Contains(t, StringComparer.Ordinal)));
                 }
 
-                return projects.Select(project => project.ToClientProject()).ToList();
+                if (query.UserId != null)
+                {
+                    projects = projects.Where(p => p.IsUserOwner(Context.User));
+                }
+
+                if (query.OrderBy is "id")
+                {
+                    if (query.Ascending is null or true)
+                    {
+                        projects = projects.OrderBy(p => p.Id);
+                    }
+                    else
+                    {
+                        projects = projects.OrderByDescending(p => p.Id);
+                    }
+                }
+                else if (query.OrderBy is not null)
+                {
+                    throw new NotImplementedException();
+                }
+
+                return projects.Select(project => project.ToClientProject(Context.User)).ToList();
             }
         }
 
@@ -211,7 +228,7 @@ namespace NGitLab.Mock.Clients
         {
             using (Context.BeginOperationScope())
             {
-                return GetProject(id, ProjectPermission.View).ToClientProject();
+                return GetProject(id, ProjectPermission.View).ToClientProject(Context.User);
             }
         }
 
@@ -248,13 +265,43 @@ namespace NGitLab.Mock.Clients
                 var matches = Server.AllProjects.Where(project => project.ForkedFrom?.Id == upstream.Id);
                 matches = matches.Where(project => query.Owned == null || query.Owned == project.IsUserOwner(Context.User));
 
-                return matches.Select(project => project.ToClientProject()).ToList();
+                return matches.Select(project => project.ToClientProject(Context.User)).ToList();
             }
         }
 
         public Dictionary<string, double> GetLanguages(string id)
         {
-            throw new NotImplementedException();
+            // Basic implementation, the results are not expected to be accurrate
+            using (Context.BeginOperationScope())
+            {
+                var project = GetProject(id, ProjectPermission.View);
+                if (project.Repository.IsEmpty)
+                    return new(StringComparer.Ordinal);
+
+                project.Repository.Checkout(project.DefaultBranch);
+
+                var gitFolder = Path.Combine(project.Repository.FullPath, ".git");
+                var files = Directory.GetFiles(project.Repository.FullPath, "*", SearchOption.AllDirectories)
+                    .Where(file => !file.StartsWith(gitFolder, StringComparison.Ordinal))
+                    .ToArray();
+
+                Dictionary<string, double> result = new(StringComparer.Ordinal);
+                AddByExtension("C#", ".cs");
+                AddByExtension("HTML", ".html", ".htm");
+                AddByExtension("JavaScript", ".js", ".jsx");
+                AddByExtension("PowerShell", ".ps1");
+                AddByExtension("TypeScript", ".ts", ".tsx");
+                return result;
+
+                void AddByExtension(string name, params string[] expectedExtensions)
+                {
+                    var count = files.Count(file => expectedExtensions.Any(expectedExtension => file.EndsWith(expectedExtension, StringComparison.OrdinalIgnoreCase)));
+                    if (count > 0)
+                    {
+                        result.Add(name, count / (double)files.Length);
+                    }
+                }
+            }
         }
 
         public Models.Project Update(string id, ProjectUpdate projectUpdate)
@@ -305,7 +352,7 @@ namespace NGitLab.Mock.Clients
                     project.Topics = projectUpdate.Topics.Where(t => !string.IsNullOrEmpty(t)).Distinct(StringComparer.Ordinal).ToArray();
                 }
 
-                return project.ToClientProject();
+                return project.ToClientProject(Context.User);
             }
         }
 

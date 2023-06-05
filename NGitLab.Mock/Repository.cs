@@ -24,6 +24,7 @@ namespace NGitLab.Mock
 
         private readonly object _lock = new();
         private TemporaryDirectory _directory;
+        private string _repositoryDirectory;
         private LibGit2Sharp.Repository _repository;
         private readonly IList<ReleaseTag> _releaseTags = new List<ReleaseTag>();
 
@@ -38,12 +39,23 @@ namespace NGitLab.Mock
         {
             get
             {
-                if (_directory == null)
+                if (_repositoryDirectory == null)
                 {
                     _ = GetGitRepository();
                 }
 
-                return _directory.FullPath;
+                return _repositoryDirectory;
+            }
+        }
+
+        public bool IsEmpty
+        {
+            get
+            {
+                if (_directory == null)
+                    return true;
+
+                return !GetGitRepository().Commits.Any();
             }
         }
 
@@ -56,9 +68,13 @@ namespace NGitLab.Mock
                     if (_directory == null)
                     {
                         var directory = TemporaryDirectory.Create();
+
+                        // We happen the project full path to have a final path that match more closely the folder layout as found on GitLab
+                        var repositoryDirectory = Path.Combine(directory.FullPath, Project.PathWithNamespace.Replace('/', Path.DirectorySeparatorChar));
+
                         if (Project.ForkedFrom == null)
                         {
-                            LibGit2Sharp.Repository.Init(directory.FullPath);
+                            LibGit2Sharp.Repository.Init(repositoryDirectory);
 
                             // libgit2sharp cannot init with a branch other than master
                             // Use symbolic-ref to keep the code compatible with older version of git
@@ -70,7 +86,7 @@ namespace NGitLab.Mock
                                     Arguments = $"symbolic-ref HEAD \"refs/heads/{Project.DefaultBranch}\"",
                                     RedirectStandardError = true,
                                     UseShellExecute = false,
-                                    WorkingDirectory = directory.FullPath,
+                                    WorkingDirectory = repositoryDirectory,
                                 },
                             };
 
@@ -79,20 +95,21 @@ namespace NGitLab.Mock
                             if (process.ExitCode != 0)
                             {
                                 var error = process.StandardError.ReadToEnd();
-                                throw new GitLabException($"Cannot update symbolic ref with branch '{Project.DefaultBranch}' in '{directory.FullPath}': {error}");
+                                throw new GitLabException($"Cannot update symbolic ref with branch '{Project.DefaultBranch}' in '{repositoryDirectory}': {error}");
                             }
                         }
                         else
                         {
-                            LibGit2Sharp.Repository.Clone(Project.ForkedFrom.Repository.FullPath, directory.FullPath);
+                            LibGit2Sharp.Repository.Clone(Project.ForkedFrom.Repository.FullPath, repositoryDirectory);
                         }
 
-                        _repository = new LibGit2Sharp.Repository(directory.FullPath);
+                        _repository = new LibGit2Sharp.Repository(repositoryDirectory);
 
                         _repository.Config.Set("receive.advertisePushOptions", value: true);
                         _repository.Config.Set("uploadpack.allowFilter", value: true);
                         _repository.Config.Set("receive.denyCurrentBranch", value: "updateInstead"); // Allow git push to existing branches
 
+                        _repositoryDirectory = repositoryDirectory;
                         _directory = directory;
                     }
                 }
@@ -188,6 +205,20 @@ namespace NGitLab.Mock
             }
 
             return commit;
+        }
+
+        public Commit CherryPick(CommitCherryPick commitCherryPick)
+        {
+            var repo = GetGitRepository();
+            Commands.Checkout(repo, commitCherryPick.Branch);
+
+            var commit = GetCommit(commitCherryPick.Sha.ToString());
+            var options = new CherryPickOptions
+            {
+                CommitOnSuccess = commitCherryPick.Message?.Length > 0,
+            };
+            var cherryPickResult = repo.CherryPick(commit, commit.Author, options);
+            return cherryPickResult.Commit ?? repo.Commit(commit.Message, commit.Author, commit.Committer);
         }
 
         public void Checkout(string committishOrBranchNameSpec)
@@ -379,15 +410,7 @@ namespace NGitLab.Mock
         public Commit GetCommit(string reference)
         {
             var repository = GetGitRepository();
-            var branchTip = GetBranchTipCommit(reference);
-            if (branchTip != null)
-                return branchTip;
-
-            var tag = repository.Tags[reference];
-            if (tag?.PeeledTarget is Commit commit)
-                return commit;
-
-            return repository.Commits.SingleOrDefault(c => string.Equals(c.Sha, reference, StringComparison.Ordinal));
+            return repository.Lookup<Commit>(reference);
         }
 
         public Patch GetBranchFullPatch(string branchName)
@@ -441,7 +464,15 @@ namespace NGitLab.Mock
         public FileData GetFile(string filePath, string @ref)
         {
             var repo = GetGitRepository();
-            Commands.Checkout(repo, @ref);
+            try
+            {
+                Commands.Checkout(repo, @ref);
+            }
+            catch (LibGit2Sharp.NotFoundException)
+            {
+                throw new GitLabNotFoundException("File not found");
+            }
+
             var fileCompletePath = Path.Combine(FullPath, filePath);
 
             if (!System.IO.File.Exists(fileCompletePath))
@@ -609,6 +640,41 @@ namespace NGitLab.Mock
             }
 
             return true;
+        }
+
+        internal bool HasConflicts(UserRef user, string sourceBranch, string targetBranch)
+        {
+            if (user is null)
+                throw new ArgumentNullException(nameof(user));
+            if (string.IsNullOrEmpty(sourceBranch))
+                throw new ArgumentException("Cannot be null or empty", nameof(sourceBranch));
+            if (string.IsNullOrEmpty(targetBranch))
+                throw new ArgumentException("Cannot be null or empty", nameof(targetBranch));
+
+            var repo = GetGitRepository();
+
+            var head = repo.Head;
+            var branch = repo.Branches[sourceBranch];
+            var upstream = repo.Branches[targetBranch];
+
+            var signature = new Signature(user.UserName, user.Email, DateTimeOffset.UtcNow);
+            var options = new MergeOptions
+            {
+                CommitOnSuccess = false,
+                FastForwardStrategy = FastForwardStrategy.NoFastForward,
+            };
+
+            Commands.Checkout(repo, upstream);
+
+            var resetTip = upstream.Tip;
+
+            var mergeResult = repo.Merge(branch.Tip, signature, options);
+            var result = mergeResult.Status == MergeStatus.Conflicts;
+
+            repo.Reset(ResetMode.Hard, resetTip);
+            Commands.Checkout(repo, head);
+
+            return result;
         }
 
         public void Dispose()

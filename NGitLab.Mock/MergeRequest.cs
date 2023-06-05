@@ -139,7 +139,7 @@ namespace NGitLab.Mock
                 if (string.IsNullOrEmpty(HeadSha))
                     return null;
                 var headSha = new Sha1(_headSha);
-                var pipeline = Project.Pipelines
+                var pipeline = SourceProject.Pipelines
                   .Where(p => p.Sha.Equals(headSha))
                   .OrderByDescending(p => p.CreatedAt)
                   .FirstOrDefault();
@@ -215,6 +215,7 @@ namespace NGitLab.Mock
 
             if (ForceRemoveSourceBranch || ShouldRemoveSourceBranch)
             {
+                SourceProject.Repository.Checkout(SourceProject.DefaultBranch);
                 SourceProject.Repository.RemoveBranch(SourceBranch);
             }
 
@@ -227,6 +228,7 @@ namespace NGitLab.Mock
             SourceProject.Repository.Rebase(user, SourceBranch, TargetBranch);
 
             UpdatedAt = DateTimeOffset.UtcNow;
+            RefreshInternalState();
 
             return new RebaseResult { RebaseInProgress = true };
         }
@@ -312,6 +314,7 @@ namespace NGitLab.Mock
                     StartSha = StartSha,
                     HeadSha = HeadSha,
                 },
+                BlockingDiscussionsResolved = !Project.AllThreadsMustBeResolvedToMerge || Comments.All(c => !c.Resolvable || c.Resolved),
             };
         }
 
@@ -346,6 +349,8 @@ namespace NGitLab.Mock
             if (State != MergeRequestState.opened)
                 return;
 
+            UpdateSha();
+
             var headSha = SourceBranchHeadCommit?.Sha;
             if (headSha is not null)
                 _headSha = headSha;
@@ -379,11 +384,14 @@ namespace NGitLab.Mock
 
             _divergedCommitsCount = Project.Repository.ComputeDivergence(TargetBranchHeadCommit, commonCommit);
 
-            // Determine if there are conflicts, by performing a rebase on a transient copy of the source branch
-            var transientBranchName = "transient/" + Guid.NewGuid().ToString("N");
-            Project.Repository.CreateBranch(transientBranchName, _consolidatedSourceBranch);
-            _hasConflicts = !Project.Repository.Rebase(DefaultUser, transientBranchName, TargetBranch);
-            Project.Repository.RemoveBranch(transientBranchName);
+            try
+            {
+                _hasConflicts = Project.Repository.HasConflicts(DefaultUser, _consolidatedSourceBranch, TargetBranch);
+            }
+            catch
+            {
+                _hasConflicts = true;
+            }
         }
     }
 }

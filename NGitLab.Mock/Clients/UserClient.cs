@@ -36,7 +36,16 @@ namespace NGitLab.Mock.Clients
             }
         }
 
-        public Session Current => Context.User?.ToClientSession();
+        public Session Current
+        {
+            get
+            {
+                using (Context.BeginOperationScope())
+                {
+                    return Context.User?.ToClientSession();
+                }
+            }
+        }
 
         public ISshKeyClient CurrentUserSShKeys => throw new NotSupportedException();
 
@@ -125,7 +134,9 @@ namespace NGitLab.Mock.Clients
         {
             using (Context.BeginOperationScope())
             {
-                return Server.Users.SearchByUsername(query).Select(user => user.ToClientUser()).ToList();
+                return Server.Users
+                    .Where(user => string.Equals(user.Email, query, StringComparison.OrdinalIgnoreCase) || string.Equals(user.UserName, query, StringComparison.OrdinalIgnoreCase))
+                    .Select(user => user.ToClientUser()).ToList();
             }
         }
 

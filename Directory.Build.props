@@ -27,7 +27,7 @@
     <SourceRoot Include="$(MSBuildThisFileDirectory)/" />
 
     <AdditionalFiles Include="$(MSBuildThisFileDirectory)/BannedSymbols.txt" Link="Properties/BannedSymbols.txt" />
-    <PackageReference Include="MinVer" PrivateAssets="All" Version="4.2.0" />
+    <PackageReference Include="MinVer" PrivateAssets="All" Version="4.3.0" />
 
     <PackageReference Include="DotNet.ReproducibleBuilds" Version="1.1.1">
       <PrivateAssets>all</PrivateAssets>
@@ -37,12 +37,12 @@
 
   <!-- Analyzers (Roslyn, Meziantou, StyleCop, ...) -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="6.0.0">
+    <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="7.0.1">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
 
-    <PackageReference Include="Meziantou.Analyzer" Version="1.0.740">
+    <PackageReference Include="Meziantou.Analyzer" Version="2.0.57">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
@@ -52,7 +52,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
 
-    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="3.3.3">
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="3.3.4">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>

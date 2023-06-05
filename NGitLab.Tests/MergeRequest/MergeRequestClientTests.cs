@@ -21,6 +21,7 @@ namespace NGitLab.Tests
             var mergeRequestClient = context.Client.GetMergeRequest(project.Id);
 
             Assert.AreEqual(mergeRequest.Id, mergeRequestClient[mergeRequest.Iid].Id, "Test we can get a merge request by IId");
+            Assert.AreEqual(mergeRequest.Id, (await mergeRequestClient.GetByIidAsync(mergeRequest.Iid, options: null)).Id, "Test we can get a merge request by IId");
 
             ListMergeRequest(mergeRequestClient, mergeRequest);
             mergeRequest = UpdateMergeRequest(mergeRequestClient, mergeRequest);
@@ -65,7 +66,6 @@ namespace NGitLab.Tests
                 CommitMessage = "A message",
                 AuthorEmail = "a@example.com",
                 AuthorName = "a",
-                ProjectId = project.Id,
                 Actions =
                 {
                     new CreateCommitAction
@@ -82,6 +82,44 @@ namespace NGitLab.Tests
                 "There should be a 1-commit divergence between the default branch NOW and its state at the moment the MR was created");
 
             RebaseMergeRequest(mergeRequestClient, mergeRequest);
+            var commits = mergeRequestClient.Commits(mergeRequest.Iid).All;
+            Assert.IsTrue(commits.Any(), "Can return the commits");
+        }
+
+        [Test]
+        [NGitLabRetry]
+        public async Task Test_merge_request_rebaseasync_skip_ci()
+        {
+            using var context = await GitLabTestContext.CreateAsync();
+            var (project, mergeRequest) = context.CreateMergeRequest();
+            var mergeRequestClient = context.Client.GetMergeRequest(project.Id);
+
+            // Additional commit in default branch, to create divergence
+            var commitClient = context.Client.GetCommits(project.Id);
+            commitClient.Create(new CommitCreate
+            {
+                Branch = project.DefaultBranch,
+                CommitMessage = "A message",
+                AuthorEmail = "a@example.com",
+                AuthorName = "a",
+                Actions =
+                {
+                    new CreateCommitAction
+                    {
+                        Action = "create",
+                        Content = "This is a test",
+                        FilePath = "whatever.txt",
+                    },
+                },
+            });
+
+            var mr = mergeRequestClient[mergeRequest.Iid];
+            Assert.AreEqual(1, mr.DivergedCommitsCount,
+                "There should be a 1-commit divergence between the default branch NOW and its state at the moment the MR was created");
+
+            var rebaseResult = await mergeRequestClient.RebaseAsync(mergeRequest.Iid, new MergeRequestRebase { SkipCi = true });
+            Assert.IsTrue(rebaseResult.RebaseInProgress);
+
             var commits = mergeRequestClient.Commits(mergeRequest.Iid).All;
             Assert.IsTrue(commits.Any(), "Can return the commits");
         }
@@ -229,6 +267,35 @@ namespace NGitLab.Tests
             mergeRequest.MergeWhenPipelineSucceeds = true;
 
             AcceptAndCancelMergeRequest(mergeRequestClient, mergeRequest);
+        }
+
+        [Test]
+        [NGitLabRetry]
+        public async Task Test_merge_request_versions()
+        {
+            using var context = await GitLabTestContext.CreateAsync();
+            var (project, mergeRequest) = context.CreateMergeRequest();
+            var mergeRequestClient = context.Client.GetMergeRequest(project.Id);
+
+            var versions = mergeRequestClient.GetVersionsAsync(mergeRequest.Iid);
+            var version = versions.First();
+
+            Assert.AreEqual(mergeRequest.Sha, version.HeadCommitSha);
+        }
+
+        [Test]
+        [NGitLabRetry]
+        public async Task Test_merge_request_head_pipeline()
+        {
+            using var context = await GitLabTestContext.CreateAsync();
+            var (project, mergeRequest) = context.CreateMergeRequest();
+            var sourceProjectId = await context.Client.Projects.GetByIdAsync(mergeRequest.SourceProjectId, new SingleProjectQuery());
+            JobTests.AddGitLabCiFile(context.Client, sourceProjectId, branch: mergeRequest.SourceBranch);
+            var mergeRequestClient = context.Client.GetMergeRequest(project.Id);
+
+            mergeRequest = await GitLabTestContext.RetryUntilAsync(() => mergeRequestClient[mergeRequest.Iid], p => p.HeadPipeline != null, TimeSpan.FromSeconds(120));
+
+            Assert.AreEqual(project.Id, mergeRequest.HeadPipeline?.ProjectId);
         }
 
         private static void ListMergeRequest(IMergeRequestClient mergeRequestClient, MergeRequest mergeRequest)

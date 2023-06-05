@@ -101,8 +101,6 @@ namespace NGitLab.Mock
 
         public RepositoryAccessLevel RepositoryAccessLevel { get; set; } = RepositoryAccessLevel.Enabled;
 
-        public bool IsEmpty { get; set; }
-
         public PermissionCollection Permissions { get; }
 
         public Repository Repository { get; }
@@ -144,6 +142,8 @@ namespace NGitLab.Mock
         public int ApprovalsBeforeMerge { get; set; }
 
         public string MergeMethod { get; set; }
+
+        public bool AllThreadsMustBeResolvedToMerge { get; set; }
 
         public ProjectStatistics Statistics { get; set; }
 
@@ -380,22 +380,26 @@ namespace NGitLab.Mock
 
             var existingProject = group.Projects.FirstOrDefault(p => string.Equals(p.Name, projectName, StringComparison.Ordinal));
             if (existingProject != null)
-                return existingProject;
+            {
+                return existingProject == this ?
+                    throw new InvalidOperationException($"Cannot fork '{PathWithNamespace}' onto itself") :
+                    existingProject;
+            }
 
             var newProject = new Project(projectName)
             {
                 Description = Description,
                 ForkedFrom = this,
                 ImportStatus = "finished",
+                Visibility = Server.DefaultForkVisibilityLevel,
             };
 
-            newProject.Visibility = Server.DefaultForkVisibilityLevel;
             newProject.Permissions.Add(new Permission(user, AccessLevel.Maintainer));
             group.Projects.Add(newProject);
             return newProject;
         }
 
-        public Models.Project ToClientProject()
+        public Models.Project ToClientProject(User currentUser)
         {
             var kind = Group.IsUserNamespace ? "user" : "group";
 
@@ -405,10 +409,10 @@ namespace NGitLab.Mock
                 Id = Id,
                 Name = Name,
                 Description = Description,
-                EmptyRepo = IsEmpty,
+                EmptyRepo = Repository.IsEmpty,
                 Path = Path,
                 PathWithNamespace = PathWithNamespace,
-                ForkedFromProject = ForkedFrom?.ToClientProject(),
+                ForkedFromProject = ForkedFrom?.ToClientProject(currentUser),
                 ForkingAccessLevel = ForkingAccessLevel,
                 ImportStatus = ImportStatus,
                 HttpUrl = HttpUrl,
@@ -431,8 +435,25 @@ namespace NGitLab.Mock
                 MirrorTriggerBuilds = MirrorTriggerBuilds,
                 OnlyMirrorProtectedBranch = OnlyMirrorProtectedBranch,
                 MirrorOverwritesDivergedBranches = MirrorOverwritesDivergedBranches,
+                Permissions = GetProjectPermissions(currentUser),
             };
 #pragma warning restore CS0618 // Type or member is obsolete
+        }
+
+        private ProjectPermissions GetProjectPermissions(User user)
+        {
+            var projectPermissions = new ProjectPermissions();
+            if (Permissions.FirstOrDefault(x => x.User == user)?.AccessLevel is { } accessLevel)
+            {
+                projectPermissions.ProjectAccess = new ProjectPermission { AccessLevel = accessLevel };
+            }
+
+            if (Group.GetEffectivePermissions().GetAccessLevel(user) is { } groupAccessLevel)
+            {
+                projectPermissions.GroupAccess = new ProjectPermission { AccessLevel = groupAccessLevel };
+            }
+
+            return projectPermissions;
         }
     }
 }

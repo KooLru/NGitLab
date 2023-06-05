@@ -35,7 +35,7 @@ namespace NGitLab.Mock.Clients
         {
             using (Context.BeginOperationScope())
             {
-                var project = GetProject(issueCreate.Id, ProjectPermission.View);
+                var project = GetProject(issueCreate.ProjectId, ProjectPermission.View);
 
                 var issue = new Issue
                 {
@@ -71,7 +71,7 @@ namespace NGitLab.Mock.Clients
         {
             using (Context.BeginOperationScope())
             {
-                var projectId = issueEdit.Id;
+                var projectId = issueEdit.ProjectId;
                 var issueToModify = GetIssue(projectId, issueEdit.IssueId);
 
                 if (issueEdit.AssigneeId.HasValue)
@@ -79,9 +79,12 @@ namespace NGitLab.Mock.Clients
                     issueToModify.Assignee = GetUser(issueEdit.AssigneeId.Value);
                 }
 
+                var prevMilestone = issueToModify.Milestone;
+
                 if (issueEdit.MilestoneId.HasValue)
                 {
                     issueToModify.Milestone = GetMilestone(projectId, issueEdit.MilestoneId.Value);
+                    CreateResourceMilestoneEvents(issueToModify.Id, prevMilestone, issueToModify.Milestone);
                 }
 
                 issueToModify.Title = issueEdit.Title;
@@ -146,6 +149,46 @@ namespace NGitLab.Mock.Clients
             }
         }
 
+        public IEnumerable<Models.ResourceMilestoneEvent> ResourceMilestoneEvents(int projectId, int issueIid)
+        {
+            using (Context.BeginOperationScope())
+            {
+                var issue = GetIssue(projectId, issueIid);
+                return Server.ResourceMilestoneEvents.Get(issue.Id).Select(rme => rme.ToClientResourceMilestoneEvent());
+            }
+        }
+
+        public GitLabCollectionResponse<Models.ResourceMilestoneEvent> ResourceMilestoneEventsAsync(int projectId, int issueIid)
+        {
+            using (Context.BeginOperationScope())
+            {
+                var issue = GetIssue(projectId, issueIid);
+                var resourceMilestoneEvents = Server.ResourceMilestoneEvents.Get(issue.Id);
+
+                return GitLabCollectionResponse.Create(resourceMilestoneEvents.Select(rme => rme.ToClientResourceMilestoneEvent()));
+            }
+        }
+
+        public IEnumerable<Models.ResourceStateEvent> ResourceStateEvents(int projectId, int issueIid)
+        {
+            using (Context.BeginOperationScope())
+            {
+                var issue = GetIssue(projectId, issueIid);
+                return Server.ResourceStateEvents.Get(issue.Id).Select(rle => rle.ToClientResourceStateEvent());
+            }
+        }
+
+        public GitLabCollectionResponse<Models.ResourceStateEvent> ResourceStateEventsAsync(int projectId, int issueIid)
+        {
+            using (Context.BeginOperationScope())
+            {
+                var issue = GetIssue(projectId, issueIid);
+                var resourceStateEvents = Server.ResourceStateEvents.Get(issue.Id);
+
+                return GitLabCollectionResponse.Create(resourceStateEvents.Select(rle => rle.ToClientResourceStateEvent()));
+            }
+        }
+
         public IEnumerable<Models.MergeRequest> RelatedTo(int projectId, int issueId)
         {
             throw new NotImplementedException();
@@ -167,6 +210,11 @@ namespace NGitLab.Mock.Clients
         }
 
         public Task<TimeStats> TimeStatsAsync(int projectId, int issueIid, CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<Models.Issue> CloneAsync(int projectId, int issueIid, IssueClone issueClone, CancellationToken cancellationToken = default)
         {
             throw new NotImplementedException();
         }
@@ -451,6 +499,48 @@ namespace NGitLab.Mock.Clients
                     });
                 }
             }
+        }
+
+        private void CreateResourceMilestoneEvents(int resourceId, Milestone previousMilestone, Milestone newMilestone)
+        {
+            if (previousMilestone is null)
+            {
+                CreateResourceMilestoneEvent(resourceId, newMilestone, ResourceMilestoneEventAction.Add);
+            }
+            else if (newMilestone is not null && previousMilestone is not null)
+            {
+                if (newMilestone.Id != previousMilestone.Id)
+                {
+                    CreateResourceMilestoneEvent(resourceId, previousMilestone, ResourceMilestoneEventAction.Remove);
+                }
+
+                CreateResourceMilestoneEvent(resourceId, newMilestone, ResourceMilestoneEventAction.Add);
+            }
+        }
+
+        private void CreateResourceMilestoneEvent(int resourceId, Milestone milestone, ResourceMilestoneEventAction action)
+        {
+            var currentUser = Context.User;
+            Server.ResourceMilestoneEvents.Add(new ResourceMilestoneEvent()
+            {
+                Action = action,
+                Milestone = milestone,
+                ResourceId = resourceId,
+                CreatedAt = DateTime.UtcNow,
+                Id = Server.GetNewResourceLabelEventId(),
+                User = new Author()
+                {
+                    Id = currentUser.Id,
+                    Email = currentUser.Email,
+                    AvatarUrl = currentUser.AvatarUrl,
+                    Name = currentUser.Name,
+                    State = currentUser.State.ToString(),
+                    Username = currentUser.UserName,
+                    CreatedAt = currentUser.CreatedAt,
+                    WebUrl = currentUser.WebUrl,
+                },
+                ResourceType = "issue",
+            });
         }
     }
 }

@@ -22,6 +22,7 @@ namespace NGitLab.Mock
             Permissions = new PermissionCollection(this);
             Badges = new BadgeCollection(this);
             Labels = new LabelsCollection(this);
+            Milestones = new MilestoneCollection(this);
             Name = name;
         }
 
@@ -73,14 +74,13 @@ namespace NGitLab.Mock
 
         public LabelsCollection Labels { get; }
 
+        public MilestoneCollection Milestones { get; }
+
         public string Path
         {
             get
             {
-                if (_path == null)
-                {
-                    _path = Slug.Create(Name);
-                }
+                _path ??= Slug.Create(Name);
 
                 return _path;
             }
@@ -160,6 +160,12 @@ namespace NGitLab.Mock
             }
         }
 
+        public bool IsUserOwner(User user)
+        {
+            var accessLevel = GetEffectivePermissions().GetAccessLevel(user);
+            return accessLevel >= AccessLevel.Owner;
+        }
+
         public bool CanUserViewGroup(User user)
         {
             if (Visibility == VisibilityLevel.Public)
@@ -170,6 +176,9 @@ namespace NGitLab.Mock
 
             if (user == null)
                 return false;
+
+            if (user.IsAdmin)
+                return true;
 
             var accessLevel = GetEffectivePermissions().GetAccessLevel(user);
             if (accessLevel.HasValue)
@@ -183,6 +192,9 @@ namespace NGitLab.Mock
             if (user == null)
                 return false;
 
+            if (user.IsAdmin)
+                return true;
+
             var accessLevel = GetEffectivePermissions().GetAccessLevel(user);
             return accessLevel.HasValue && accessLevel.Value == AccessLevel.Owner;
         }
@@ -191,6 +203,9 @@ namespace NGitLab.Mock
         {
             if (user == null)
                 return false;
+
+            if (user.IsAdmin)
+                return true;
 
             var accessLevel = GetEffectivePermissions().GetAccessLevel(user);
             return accessLevel.HasValue && accessLevel.Value >= AccessLevel.Maintainer;
@@ -201,6 +216,9 @@ namespace NGitLab.Mock
             if (user == null)
                 return false;
 
+            if (user.IsAdmin)
+                return true;
+
             var accessLevel = GetEffectivePermissions().GetAccessLevel(user);
             return accessLevel.HasValue && accessLevel.Value >= AccessLevel.Developer;
         }
@@ -210,11 +228,14 @@ namespace NGitLab.Mock
             if (user == null)
                 return false;
 
+            if (user.IsAdmin)
+                return true;
+
             var accessLevel = GetEffectivePermissions().GetAccessLevel(user);
             return accessLevel.HasValue && accessLevel.Value >= AccessLevel.Developer;
         }
 
-        public Models.Group ToClientGroup()
+        public Models.Group ToClientGroup(User currentUser)
         {
             return new Models.Group
             {
@@ -222,7 +243,7 @@ namespace NGitLab.Mock
                 Name = Name,
                 Visibility = Visibility,
                 ParentId = Parent?.Id,
-                Projects = Projects.Select(p => p.ToClientProject()).ToArray(),
+                Projects = Projects.Select(p => p.ToClientProject(currentUser)).ToArray(),
                 FullName = FullName,
                 FullPath = PathWithNameSpace,
                 Path = Path,

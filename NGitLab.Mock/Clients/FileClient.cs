@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,7 +27,6 @@ namespace NGitLab.Mock.Clients
                     CommitMessage = file.CommitMessage,
                     AuthorEmail = Context.User.Email,
                     AuthorName = Context.User.Name,
-                    ProjectId = _projectId,
                     Actions = new[]
                     {
                         new CreateCommitAction
@@ -56,7 +54,6 @@ namespace NGitLab.Mock.Clients
                     CommitMessage = file.CommitMessage,
                     AuthorEmail = Context.User.Email,
                     AuthorName = Context.User.Name,
-                    ProjectId = _projectId,
                     Actions = new[]
                     {
                         new CreateCommitAction
@@ -106,7 +103,6 @@ namespace NGitLab.Mock.Clients
                     CommitMessage = file.CommitMessage,
                     AuthorEmail = Context.User.Email,
                     AuthorName = Context.User.Name,
-                    ProjectId = _projectId,
                     Actions = new[]
                     {
                         new CreateCommitAction
@@ -123,7 +119,6 @@ namespace NGitLab.Mock.Clients
             }
         }
 
-        [SuppressMessage("Design", "MA0042:Do not use blocking calls in an async method", Justification = "Would be an infinite recursion")]
         public async Task<FileData> GetAsync(string filePath, string @ref, CancellationToken cancellationToken = default)
         {
             await Task.Yield();

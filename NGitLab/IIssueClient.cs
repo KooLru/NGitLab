@@ -95,10 +95,36 @@ namespace NGitLab
         /// </summary>
         /// <param name="projectId">The project id.</param>
         /// <param name="issueIid">The id of the issue in the project's scope.</param>
-        /// <returns>The issue if it's updated.  Null if not.</returns>
+        /// <returns>A collection of the resource label events linked to this issue.</returns>
         IEnumerable<ResourceLabelEvent> ResourceLabelEvents(int projectId, int issueIid);
 
         GitLabCollectionResponse<ResourceLabelEvent> ResourceLabelEventsAsync(int projectId, int issueIid);
+
+        /// <summary>
+        /// Gets the resource milestone events.
+        ///
+        /// url like GET /projects/:id/issues/:issue_iid/resource_milestone_events
+        ///
+        /// </summary>
+        /// <param name="projectId">The project id.</param>
+        /// <param name="issueIid">The id of the issue in the project's scope.</param>
+        /// <returns>A collection of the resource milestone events linked to this issue.</returns>
+        IEnumerable<ResourceMilestoneEvent> ResourceMilestoneEvents(int projectId, int issueIid);
+
+        GitLabCollectionResponse<ResourceMilestoneEvent> ResourceMilestoneEventsAsync(int projectId, int issueIid);
+
+        /// <summary>
+        /// Gets the resource state events.
+        ///
+        /// url like GET /projects/:id/issues/:issue_iid/resource_state_events
+        ///
+        /// </summary>
+        /// <param name="projectId">The project id.</param>
+        /// <param name="issueIid">The id of the issue in the project's scope.</param>
+        /// <returns>A collection of the resource state events linked to this issue.</returns>
+        IEnumerable<ResourceStateEvent> ResourceStateEvents(int projectId, int issueIid);
+
+        GitLabCollectionResponse<ResourceStateEvent> ResourceStateEventsAsync(int projectId, int issueIid);
 
         /// <summary>
         /// Get all merge requests that are related to a particular issue.
@@ -127,5 +153,15 @@ namespace NGitLab
         /// <param name="issueIid">The id of the issue in the project's scope.</param>
         /// <returns>The time tracking statistics of the issue.</returns>
         Task<TimeStats> TimeStatsAsync(int projectId, int issueIid, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Clone the issue to given project
+        /// </summary>
+        /// <param name="projectId">The project id</param>
+        /// <param name="issueIid">The id of the issue in the project's scope</param>
+        /// <param name="issueClone">Destination information</param>
+        /// <param name="cancellationToken"></param>
+        /// <returns></returns>
+        Task<Issue> CloneAsync(int projectId, int issueIid, IssueClone issueClone, CancellationToken cancellationToken = default);
     }
 }

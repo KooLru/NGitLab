@@ -24,6 +24,10 @@ namespace NGitLab.Tests
 
             var pipelines = await GitLabTestContext.RetryUntilAsync(() => pipelineClient.All, p => p.Any(), TimeSpan.FromSeconds(120));
             Assert.IsNotEmpty(pipelines);
+            foreach (var pipeline in pipelines)
+            {
+                Assert.AreEqual(project.Id, pipeline.ProjectId);
+            }
         }
 
         [Test]
@@ -46,7 +50,6 @@ namespace NGitLab.Tests
                 Ref = pipeline.Ref,
                 PipelineId = pipeline.Id,
                 Name = "test",
-                ProjectId = project.Id,
                 Coverage = 50,
                 Description = "descr",
                 Status = "success",

@@ -117,22 +117,22 @@ namespace NGitLab.Tests.Docker
             var defaultBranch = "main";
 
             var project = s_gitlabRetryPolicy.Execute(() =>
+            {
+                var projectCreate = new ProjectCreate
                 {
-                    var projectCreate = new ProjectCreate
-                    {
-                        Name = GetUniqueRandomString(),
-                        DefaultBranch = defaultBranch,
-                        Description = "Test project",
-                        IssuesEnabled = true,
-                        MergeRequestsEnabled = true,
-                        SnippetsEnabled = true,
-                        VisibilityLevel = VisibilityLevel.Internal,
-                        WikiEnabled = true,
-                    };
+                    Name = GetUniqueRandomString(),
+                    DefaultBranch = defaultBranch,
+                    Description = "Test project",
+                    IssuesEnabled = true,
+                    MergeRequestsEnabled = true,
+                    SnippetsEnabled = true,
+                    VisibilityLevel = VisibilityLevel.Internal,
+                    WikiEnabled = true,
+                };
 
-                    configure?.Invoke(projectCreate);
-                    return client.Projects.Create(projectCreate);
-                });
+                configure?.Invoke(projectCreate);
+                return client.Projects.Create(projectCreate);
+            });
 
             // When creating a project, GitLab's JSON response should indicate the 'default_branch'. However, it
             // currently returns null instead (at least in versions <= 13.10.3). This info would come in handy, since
@@ -274,44 +274,43 @@ namespace NGitLab.Tests.Docker
 
             try
             {
-                var path = Path.Combine(Path.GetTempPath(), "GitLabClient", "Runners", "gitlab-runner.exe");
+                // Version availables: https://gitlab.com/gitlab-org/gitlab-runner/-/releases
+                var version = "15.6.3";
+                var path = Path.Combine(Path.GetTempPath(), "GitLabClient", "Runners", version, "gitlab-runner.exe");
                 if (!File.Exists(path))
                 {
-                    if (!File.Exists(path))
+                    Uri url;
+                    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                     {
-                        Uri url;
-                        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                        {
-                            url = new Uri("https://gitlab-runner-downloads.s3.amazonaws.com/latest/binaries/gitlab-runner-windows-amd64.exe");
-                        }
-                        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-                        {
-                            url = new Uri("https://gitlab-runner-downloads.s3.amazonaws.com/latest/binaries/gitlab-runner-linux-amd64");
-                        }
-                        else
-                        {
-                            throw new InvalidOperationException($"OS '{RuntimeInformation.OSDescription}' is not supported");
-                        }
+                        url = new Uri($"https://gitlab-runner-downloads.s3.amazonaws.com/v{version}/binaries/gitlab-runner-windows-amd64.exe");
+                    }
+                    else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                    {
+                        url = new Uri($"https://gitlab-runner-downloads.s3.amazonaws.com/v{version}/binaries/gitlab-runner-linux-amd64");
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException($"OS '{RuntimeInformation.OSDescription}' is not supported");
+                    }
 
-                        var stream = await HttpClient.GetStreamAsync(url).ConfigureAwait(false);
+                    var stream = await HttpClient.GetStreamAsync(url).ConfigureAwait(false);
+                    try
+                    {
+                        Directory.CreateDirectory(Path.GetDirectoryName(path));
+
+                        var fs = File.OpenWrite(path);
                         try
                         {
-                            Directory.CreateDirectory(Path.GetDirectoryName(path));
-
-                            var fs = File.OpenWrite(path);
-                            try
-                            {
-                                await stream.CopyToAsync(fs).ConfigureAwait(false);
-                            }
-                            finally
-                            {
-                                await fs.DisposeAsync().ConfigureAwait(false);
-                            }
+                            await stream.CopyToAsync(fs).ConfigureAwait(false);
                         }
                         finally
                         {
-                            await stream.DisposeAsync().ConfigureAwait(false);
+                            await fs.DisposeAsync().ConfigureAwait(false);
                         }
+                    }
+                    finally
+                    {
+                        await stream.DisposeAsync().ConfigureAwait(false);
                     }
                 }
 
@@ -330,7 +329,7 @@ namespace NGitLab.Tests.Docker
                 {
                     // Update the git configuration to remove any proxy for this host
                     // git config --global http.http://localhost:48624.proxy ""
-                    using var gitConfigProcess = Process.Start("git", "config --global http.http://localhost:48624.proxy \"\"");
+                    using var gitConfigProcess = Process.Start("git", "config --global http." + DockerContainer.GitLabUrl.ToString() + ".proxy \"\"");
                     gitConfigProcess.WaitForExit();
                     if (gitConfigProcess.ExitCode != 0)
                         throw new InvalidOperationException("git config failed");
@@ -356,15 +355,15 @@ namespace NGitLab.Tests.Docker
                 {
                     FileName = path,
                     ArgumentList =
-                {
-                    "run-single",
-                    "--url", DockerContainer.GitLabUrl.ToString(),
-                    "--executor", "shell",
-                    "--shell", RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "powershell" : "pwsh",
-                    "--builds-dir", buildDir,
-                    "--wait-timeout", "240", // in seconds
-                    "--token", runner.Token,
-                },
+                    {
+                        "run-single",
+                        "--url", DockerContainer.GitLabUrl.ToString(),
+                        "--executor", "shell",
+                        "--shell", RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "powershell" : "pwsh",
+                        "--builds-dir", buildDir,
+                        "--wait-timeout", "240", // in seconds
+                        "--token", runner.Token,
+                    },
                     CreateNoWindow = true,
                     ErrorDialog = false,
                     UseShellExecute = false,
@@ -374,6 +373,9 @@ namespace NGitLab.Tests.Docker
                 var process = Process.Start(psi);
                 if (process == null)
                     throw new InvalidOperationException("Cannot start the runner");
+
+                // Give some time to ensure the runner doesn't stop immediately
+                await Task.Delay(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
 
                 if (process.HasExited)
                     throw new InvalidOperationException("The runner has exited");

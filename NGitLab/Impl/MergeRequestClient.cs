@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Threading;
+using System.Threading.Tasks;
 using NGitLab.Extensions;
 using NGitLab.Models;
 
@@ -69,15 +71,25 @@ namespace NGitLab.Impl
             }
         }
 
+        public Task<MergeRequest> GetByIidAsync(int iid, SingleMergeRequestQuery options, CancellationToken cancellationToken = default)
+        {
+            var url = $"{_projectPath}{MergeRequest.Url}/{iid.ToStringInvariant()}";
+            if (options != null)
+            {
+                url = Utils.AddParameter(url, "include_rebase_in_progress", options.IncludeRebaseInProgress);
+                url = Utils.AddParameter(url, "include_diverged_commits_count", options.IncludeDivergedCommitsCount);
+                url = Utils.AddParameter(url, "render_html", options.RenderHtml);
+            }
+
+            return _api.Get().ToAsync<MergeRequest>(url, cancellationToken);
+        }
+
         public MergeRequest Create(MergeRequestCreate mergeRequest)
         {
             if (mergeRequest == null)
                 throw new ArgumentNullException(nameof(mergeRequest));
 
-            if (mergeRequest.TargetProjectId == null)
-            {
-                mergeRequest.TargetProjectId = _projectId;
-            }
+            mergeRequest.TargetProjectId ??= _projectId;
 
             return _api
                 .Post().With(mergeRequest)
@@ -120,6 +132,10 @@ namespace NGitLab.Impl
             .Put()
             .To<RebaseResult>(_projectPath + "/merge_requests/" + mergeRequestIid.ToString(CultureInfo.InvariantCulture) + "/rebase");
 
+        public Task<RebaseResult> RebaseAsync(int mergeRequestIid, MergeRequestRebase options, CancellationToken cancellationToken = default) => _api
+            .Put().With(options)
+            .ToAsync<RebaseResult>(_projectPath + "/merge_requests/" + mergeRequestIid.ToString(CultureInfo.InvariantCulture) + "/rebase", cancellationToken);
+
         public IEnumerable<PipelineBasic> GetPipelines(int mergeRequestIid)
         {
             return _api.Get().GetAll<PipelineBasic>(_projectPath + "/merge_requests/" + mergeRequestIid.ToString(CultureInfo.InvariantCulture) + "/pipelines");
@@ -133,6 +149,11 @@ namespace NGitLab.Impl
         public IEnumerable<Issue> ClosesIssues(int mergeRequestIid)
         {
             return _api.Get().GetAll<Issue>(_projectPath + "/merge_requests/" + mergeRequestIid.ToString(CultureInfo.InvariantCulture) + "/closes_issues");
+        }
+
+        public GitLabCollectionResponse<MergeRequestVersion> GetVersionsAsync(int mergeRequestIid)
+        {
+            return _api.Get().GetAllAsync<MergeRequestVersion>(_projectPath + "/merge_requests/" + mergeRequestIid.ToString(CultureInfo.InvariantCulture) + "/versions");
         }
 
         public IMergeRequestCommentClient Comments(int mergeRequestIid) => new MergeRequestCommentClient(_api, _projectPath, mergeRequestIid);

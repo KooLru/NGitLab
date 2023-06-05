@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Net;
+using System.Threading;
+using System.Threading.Tasks;
 using NGitLab.Models;
 
 namespace NGitLab.Mock.Clients
@@ -46,6 +48,11 @@ namespace NGitLab.Mock.Clients
             }
         }
 
+        public Task<Models.MergeRequest> GetByIidAsync(int iid, SingleMergeRequestQuery options, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(this[iid]);
+        }
+
         public IEnumerable<Models.MergeRequest> All
         {
             get
@@ -83,6 +90,9 @@ namespace NGitLab.Mock.Clients
             {
                 var project = GetProject(_projectId, ProjectPermission.Contribute);
                 var mergeRequest = project.MergeRequests.GetByIid(mergeRequestIid);
+                if (mergeRequest == null)
+                    throw new GitLabNotFoundException();
+
                 mergeRequest.ShouldRemoveSourceBranch = message.ShouldRemoveSourceBranch ?? false;
 
                 if (project.ApprovalsBeforeMerge > mergeRequest.Approvers.Count)
@@ -92,9 +102,6 @@ namespace NGitLab.Mock.Clients
                         StatusCode = HttpStatusCode.Unauthorized,
                     };
                 }
-
-                if (mergeRequest == null)
-                    throw new GitLabNotFoundException();
 
                 if (message.Sha != null)
                 {
@@ -190,6 +197,11 @@ namespace NGitLab.Mock.Clients
 
                 return mergeRequest.Rebase(Context.User);
             }
+        }
+
+        public Task<RebaseResult> RebaseAsync(int mergeRequestIid, MergeRequestRebase options, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(Rebase(mergeRequestIid));
         }
 
         public IEnumerable<Models.MergeRequest> AllInState(MergeRequestState state)
@@ -403,12 +415,12 @@ namespace NGitLab.Mock.Clients
 
                 if (query.CreatedAfter != null)
                 {
-                    mergeRequests = mergeRequests.Where(mr => mr.CreatedAt >= query.CreatedAfter.Value);
+                    mergeRequests = mergeRequests.Where(mr => mr.CreatedAt >= query.CreatedAfter.Value.ToDateTimeOffsetAssumeUtc());
                 }
 
                 if (query.CreatedBefore != null)
                 {
-                    mergeRequests = mergeRequests.Where(mr => mr.CreatedAt <= query.CreatedBefore.Value);
+                    mergeRequests = mergeRequests.Where(mr => mr.CreatedAt <= query.CreatedBefore.Value.ToDateTimeOffsetAssumeUtc());
                 }
 
                 if (!string.IsNullOrEmpty(query.Labels))
@@ -461,12 +473,12 @@ namespace NGitLab.Mock.Clients
 
                 if (query.UpdatedAfter != null)
                 {
-                    mergeRequests = mergeRequests.Where(mr => mr.UpdatedAt >= query.UpdatedAfter.Value);
+                    mergeRequests = mergeRequests.Where(mr => mr.UpdatedAt >= query.UpdatedAfter.Value.ToDateTimeOffsetAssumeUtc());
                 }
 
                 if (query.UpdatedBefore != null)
                 {
-                    mergeRequests = mergeRequests.Where(mr => mr.UpdatedAt <= query.UpdatedBefore);
+                    mergeRequests = mergeRequests.Where(mr => mr.UpdatedAt <= query.UpdatedBefore.Value.ToDateTimeOffsetAssumeUtc());
                 }
 
                 if (query.State != null)
@@ -654,6 +666,11 @@ namespace NGitLab.Mock.Clients
         }
 
         public IEnumerable<Models.Issue> ClosesIssues(int mergeRequestIid)
+        {
+            throw new NotImplementedException();
+        }
+
+        public GitLabCollectionResponse<MergeRequestVersion> GetVersionsAsync(int mergeRequestIid)
         {
             throw new NotImplementedException();
         }

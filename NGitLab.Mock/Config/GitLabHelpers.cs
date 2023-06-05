@@ -51,11 +51,11 @@ namespace NGitLab.Mock.Config
             return Configure<GitLabMergeRequest>(mergeRequest, configure);
         }
 
-        private static T Configure<T>(this T mergeRequest, Action<T> configure)
+        private static T Configure<T>(this T gitLabObject, Action<T> configure)
             where T : GitLabObject
         {
-            configure(mergeRequest);
-            return mergeRequest;
+            configure(gitLabObject);
+            return gitLabObject;
         }
 
         public static GitLabPipeline Configure(this GitLabPipeline pipeline, Action<GitLabPipeline> configure)
@@ -364,15 +364,17 @@ namespace NGitLab.Mock.Config
         /// <param name="user">Author username (required if default user not defined)</param>
         /// <param name="sourceBranch">Source branch (required if checkout or merge)</param>
         /// <param name="targetBranch">Target branch (required if merge)</param>
+        /// <param name="fromBranch">From branch</param>
         /// <param name="tags">Tags.</param>
         /// <param name="alias">Alias to reference it in pipeline.</param>
         /// <param name="configure">Configuration method</param>
-        public static GitLabProject WithCommit(this GitLabProject project, string? message = null, string? user = null, string? sourceBranch = null, string? targetBranch = null, IEnumerable<string>? tags = null, string? alias = null, Action<GitLabCommit>? configure = null)
+        public static GitLabProject WithCommit(this GitLabProject project, string? message = null, string? user = null, string? sourceBranch = null, string? targetBranch = null, string? fromBranch = null, IEnumerable<string>? tags = null, string? alias = null, Action<GitLabCommit>? configure = null)
         {
             return WithCommit(project, message, user, commit =>
             {
                 commit.SourceBranch = sourceBranch;
                 commit.TargetBranch = targetBranch;
+                commit.FromBranch = fromBranch;
                 commit.Alias = alias;
                 if (tags != null)
                 {
@@ -505,6 +507,23 @@ namespace NGitLab.Mock.Config
                 }
 
                 configure?.Invoke(issue);
+            });
+        }
+
+        public static GitLabProject WithRelease(this GitLabProject project, string author, string tagName, DateTime? createdAt = null, DateTime? releasedAt = null)
+        {
+            return Configure(project, _ =>
+            {
+                var date = DateTime.UtcNow;
+                var release = new GitLabReleaseInfo
+                {
+                    Author = author,
+                    TagName = tagName,
+                    CreatedAt = createdAt ?? date,
+                    ReleasedAt = releasedAt ?? date,
+                };
+
+                project.Releases.Add(release);
             });
         }
 
@@ -906,7 +925,7 @@ namespace NGitLab.Mock.Config
         {
             return Configure(project, _ =>
             {
-                var pipeline = new GitLabPipeline
+                var pipeline = new GitLabPipeline(project)
                 {
                     Commit = @ref ?? throw new ArgumentNullException(nameof(@ref)),
                 };
@@ -933,6 +952,9 @@ namespace NGitLab.Mock.Config
         {
             return Configure(pipeline, _ =>
             {
+                if (pipeline.Parent == null)
+                    throw new InvalidOperationException($"Parent project not set on pipeline {pipeline}");
+
                 var job = new GitLabJob
                 {
                     Name = name,
@@ -963,7 +985,7 @@ namespace NGitLab.Mock.Config
             }
 
             foreach (var group in config.Groups.OrderBy(x =>
-                string.IsNullOrEmpty(x.Namespace) ? x.Name : $"{x.Namespace}/{x.Name}"))
+                string.IsNullOrEmpty(x.Namespace) ? x.Name : $"{x.Namespace}/{x.Name}", StringComparer.Ordinal))
             {
                 CreateGroup(server, group);
             }
@@ -1111,6 +1133,11 @@ namespace NGitLab.Mock.Config
                 CreateIssue(server, prj, issue);
             }
 
+            foreach (var release in project.Releases)
+            {
+                CreateRelease(server, prj, release);
+            }
+
             for (var i = 0; i < project.MergeRequests.Count; i++)
             {
                 var mergeRequest = project.MergeRequests[i];
@@ -1163,12 +1190,31 @@ namespace NGitLab.Mock.Config
             }
         }
 
+        private static void CreateRelease(GitLabServer server, Project project, GitLabReleaseInfo gitLabRelease)
+        {
+            var user = GetOrCreateUser(server, gitLabRelease.Author);
+            var release = new ReleaseInfo
+            {
+                Author = new UserRef(user),
+                TagName = gitLabRelease.TagName,
+                CreatedAt = gitLabRelease.CreatedAt,
+                ReleasedAt = gitLabRelease.ReleasedAt,
+            };
+
+            project.Releases.Add(release);
+        }
+
         private static Commit CreateCommit(GitLabServer server, Project prj, GitLabCommit commit)
         {
             var username = commit.User ?? commit.Parent.Parent.DefaultUser ?? throw new InvalidOperationException("Default user is required when author not set");
             var user = GetOrCreateUser(server, username);
             var targetBranch = commit.TargetBranch;
             Commit cmt;
+            if (!string.IsNullOrEmpty(commit.FromBranch))
+            {
+                prj.Repository.Checkout(commit.FromBranch);
+            }
+
             if (string.IsNullOrEmpty(targetBranch))
             {
                 var branchExists = string.IsNullOrEmpty(commit.SourceBranch) || prj.Repository.GetAllBranches().Any(x => string.Equals(x.FriendlyName, commit.SourceBranch, StringComparison.Ordinal));
@@ -1251,7 +1297,7 @@ namespace NGitLab.Mock.Config
                 Author = new UserRef(GetOrCreateUser(server, issueAuthor)),
                 Assignees = string.IsNullOrEmpty(issueAssignee) ? Array.Empty<UserRef>() : issueAssignee.Split(',').Select(a => new UserRef(GetOrCreateUser(server, a.Trim()))).ToArray(),
                 Milestone = string.IsNullOrEmpty(issue.Milestone) ? null : GetOrCreateMilestone(project, issue.Milestone),
-                UpdatedAt = updatedAt,
+                UpdatedAt = updatedAt.ToDateTimeOffsetAssumeUtc(),
                 ClosedAt = issue.ClosedAt,
             };
 
@@ -1295,8 +1341,8 @@ namespace NGitLab.Mock.Config
                 Assignees = string.IsNullOrEmpty(mergeRequestAssignee) ? Array.Empty<UserRef>() : mergeRequestAssignee.Split(',').Select(a => new UserRef(GetOrCreateUser(server, a.Trim()))).ToArray(),
                 SourceBranch = mergeRequest.SourceBranch ?? Guid.NewGuid().ToString("D"),
                 TargetBranch = mergeRequest.TargetBranch ?? server.DefaultBranchName,
-                CreatedAt = createdAt,
-                UpdatedAt = updatedAt,
+                CreatedAt = createdAt.ToDateTimeOffsetAssumeUtc(),
+                UpdatedAt = updatedAt.ToDateTimeOffsetAssumeUtc(),
                 ClosedAt = mergeRequest.ClosedAt,
                 MergedAt = mergeRequest.MergedAt,
                 SourceProject = project,
@@ -1329,7 +1375,7 @@ namespace NGitLab.Mock.Config
                     .DefaultIfEmpty(updatedAt)
                     .Min();
 
-                CreateComment(server, request, comment, maxCommentCreatedAt);
+                CreateComment(server, request, comment, maxCommentCreatedAt.ToDateTimeOffsetAssumeUtc());
             }
 
             project.MergeRequests.Add(request);
@@ -1463,9 +1509,9 @@ namespace NGitLab.Mock.Config
             else if (statuses.Contains(JobStatus.Failed))
                 ppl.Status = JobStatus.Failed;
 
-            ppl.CreatedAt = jobs.Select(x => x.CreatedAt).DefaultIfEmpty(DateTime.UtcNow).Min();
+            ppl.CreatedAt = jobs.Select(x => x.CreatedAt).DefaultIfEmpty(DateTime.UtcNow).Min().ToDateTimeOffsetAssumeUtc();
             var dateTimes = jobs.Where(x => x.StartedAt != default).Select(x => x.StartedAt).ToArray();
-            ppl.StartedAt = dateTimes.Length == 0 ? null : dateTimes.Min();
+            ppl.StartedAt = dateTimes.Length == 0 ? null : dateTimes.Min().ToDateTimeOffsetAssumeUtc();
             ppl.FinishedAt = jobs.Any(x => x.Status is JobStatus.Created or JobStatus.Pending or JobStatus.Preparing or JobStatus.WaitingForResource or JobStatus.Running)
                 ? null
                 : jobs.Where(x => x.FinishedAt != default).Select(x => (DateTimeOffset)x.FinishedAt).DefaultIfEmpty(ppl.CreatedAt).Max();

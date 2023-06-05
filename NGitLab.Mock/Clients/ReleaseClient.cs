@@ -4,6 +4,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using NGitLab.Mock.Internals;
 using NGitLab.Models;
 
 namespace NGitLab.Mock.Clients
@@ -107,6 +108,36 @@ namespace NGitLab.Mock.Clients
         {
             await Task.Yield();
             return Create(data);
+        }
+
+        public GitLabCollectionResponse<Models.ReleaseInfo> GetAsync(ReleaseQuery query = null)
+        {
+            using (Context.BeginOperationScope())
+            {
+                var project = GetProject(_projectId, ProjectPermission.View);
+                var result = project.Releases.AsEnumerable();
+                if (query != null)
+                {
+                    var orderBy = !string.IsNullOrEmpty(query.OrderBy) && string.Equals(query.OrderBy, "created_at", StringComparison.Ordinal)
+                        ? new Func<ReleaseInfo, DateTime>(r => r.CreatedAt)
+                        : new Func<ReleaseInfo, DateTime>(r => r.ReleasedAt);
+
+                    var sortAsc = !string.IsNullOrEmpty(query.Sort) && string.Equals(query.Sort, "asc", StringComparison.Ordinal);
+                    result = sortAsc ? result.OrderBy(orderBy) : result.OrderByDescending(orderBy);
+
+                    if (query.Page.HasValue)
+                    {
+                        var perPage = query.PerPage ?? 20;
+                        var page = Math.Max(0, query.Page.Value - 1);
+                        result = result.Skip(perPage * page);
+                    }
+
+                    if (query.IncludeHtmlDescription == true)
+                        throw new NotImplementedException();
+                }
+
+                return GitLabCollectionResponse.Create(result.Select(r => r.ToReleaseClient()).ToArray());
+            }
         }
     }
 }

@@ -124,6 +124,9 @@ namespace NGitLab.Mock
                 Status = Status,
                 Ref = Ref,
                 Sha = Sha,
+                CreatedAt = CreatedAt.UtcDateTime,
+                UpdatedAt = UpdatedAt.UtcDateTime,
+                ProjectId = Project.Id,
             };
         }
 
@@ -145,6 +148,7 @@ namespace NGitLab.Mock
                 FinishedAt = FinishedAt.HasValue ? FinishedAt.Value.UtcDateTime : default,
                 Duration = Duration.HasValue ? Duration.Value.Ticks : 0,
                 Coverage = Coverage,
+                ProjectId = ProjectId,
                 WebUrl = Project?.WebUrl + "/-/pipelines/" + Id.ToString(CultureInfo.InvariantCulture),
             };
         }

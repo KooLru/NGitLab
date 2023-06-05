@@ -1,4 +1,6 @@
 ﻿using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using NGitLab.Models;
 
 namespace NGitLab
@@ -7,8 +9,12 @@ namespace NGitLab
     {
         Tag Create(TagCreate tag);
 
+        Task<Tag> GetByNameAsync(string name, CancellationToken cancellationToken = default);
+
         void Delete(string name);
 
         IEnumerable<Tag> All { get; }
+
+        GitLabCollectionResponse<Tag> GetAsync(TagQuery query);
     }
 }

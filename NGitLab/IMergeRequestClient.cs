@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using NGitLab.Models;
 
 namespace NGitLab
@@ -13,6 +15,8 @@ namespace NGitLab
         IEnumerable<MergeRequest> Get(MergeRequestQuery query);
 
         MergeRequest this[int iid] { get; }
+
+        Task<MergeRequest> GetByIidAsync(int iid, SingleMergeRequestQuery options, CancellationToken cancellationToken = default);
 
         MergeRequest Create(MergeRequestCreate mergeRequest);
 
@@ -35,9 +39,13 @@ namespace NGitLab
 
         RebaseResult Rebase(int mergeRequestIid);
 
+        Task<RebaseResult> RebaseAsync(int mergeRequestIid, MergeRequestRebase options, CancellationToken cancellationToken = default);
+
         IEnumerable<PipelineBasic> GetPipelines(int mergeRequestIid);
 
         IEnumerable<Author> GetParticipants(int mergeRequestIid);
+
+        GitLabCollectionResponse<MergeRequestVersion> GetVersionsAsync(int mergeRequestIid);
 
         IMergeRequestCommentClient Comments(int mergeRequestIid);
 

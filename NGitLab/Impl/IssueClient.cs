@@ -14,9 +14,12 @@ namespace NGitLab.Impl
         private const string ProjectIssuesUrl = "/projects/{0}/issues";
         private const string SingleIssueUrl = "/projects/{0}/issues/{1}";
         private const string ResourceLabelEventUrl = "/projects/{0}/issues/{1}/resource_label_events";
+        private const string ResourceMilestoneEventUrl = "/projects/{0}/issues/{1}/resource_milestone_events";
+        private const string ResourceStateEventUrl = "/projects/{0}/issues/{1}/resource_state_events";
         private const string RelatedToUrl = "/projects/{0}/issues/{1}/related_merge_requests";
         private const string ClosedByUrl = "/projects/{0}/issues/{1}/closed_by";
         private const string TimeStatsUrl = "/projects/{0}/issues/{1}/time_stats";
+        private const string CloneIssueUrl = "/projects/{0}/issues/{1}/clone";
 
         private readonly API _api;
 
@@ -89,22 +92,22 @@ namespace NGitLab.Impl
 
         public Issue Create(IssueCreate issueCreate)
         {
-            return _api.Post().With(issueCreate).To<Issue>(string.Format(CultureInfo.InvariantCulture, ProjectIssuesUrl, issueCreate.Id));
+            return _api.Post().With(issueCreate).To<Issue>(string.Format(CultureInfo.InvariantCulture, ProjectIssuesUrl, issueCreate.ProjectId));
         }
 
         public Task<Issue> CreateAsync(IssueCreate issueCreate, CancellationToken cancellationToken = default)
         {
-            return _api.Post().With(issueCreate).ToAsync<Issue>(string.Format(CultureInfo.InvariantCulture, ProjectIssuesUrl, issueCreate.Id), cancellationToken);
+            return _api.Post().With(issueCreate).ToAsync<Issue>(string.Format(CultureInfo.InvariantCulture, ProjectIssuesUrl, issueCreate.ProjectId), cancellationToken);
         }
 
         public Issue Edit(IssueEdit issueEdit)
         {
-            return _api.Put().With(issueEdit).To<Issue>(string.Format(CultureInfo.InvariantCulture, SingleIssueUrl, issueEdit.Id, issueEdit.IssueId));
+            return _api.Put().With(issueEdit).To<Issue>(string.Format(CultureInfo.InvariantCulture, SingleIssueUrl, issueEdit.ProjectId, issueEdit.IssueId));
         }
 
         public Task<Issue> EditAsync(IssueEdit issueEdit, CancellationToken cancellationToken = default)
         {
-            return _api.Put().With(issueEdit).ToAsync<Issue>(string.Format(CultureInfo.InvariantCulture, SingleIssueUrl, issueEdit.Id, issueEdit.IssueId), cancellationToken);
+            return _api.Put().With(issueEdit).ToAsync<Issue>(string.Format(CultureInfo.InvariantCulture, SingleIssueUrl, issueEdit.ProjectId, issueEdit.IssueId), cancellationToken);
         }
 
         public IEnumerable<ResourceLabelEvent> ResourceLabelEvents(int projectId, int issueIid)
@@ -115,6 +118,26 @@ namespace NGitLab.Impl
         public GitLabCollectionResponse<ResourceLabelEvent> ResourceLabelEventsAsync(int projectId, int issueIid)
         {
             return _api.Get().GetAllAsync<ResourceLabelEvent>(string.Format(CultureInfo.InvariantCulture, ResourceLabelEventUrl, projectId, issueIid));
+        }
+
+        public IEnumerable<ResourceMilestoneEvent> ResourceMilestoneEvents(int projectId, int issueIid)
+        {
+            return _api.Get().GetAll<ResourceMilestoneEvent>(string.Format(CultureInfo.InvariantCulture, ResourceMilestoneEventUrl, projectId, issueIid));
+        }
+
+        public GitLabCollectionResponse<ResourceMilestoneEvent> ResourceMilestoneEventsAsync(int projectId, int issueIid)
+        {
+            return _api.Get().GetAllAsync<ResourceMilestoneEvent>(string.Format(CultureInfo.InvariantCulture, ResourceMilestoneEventUrl, projectId, issueIid));
+        }
+
+        public IEnumerable<ResourceStateEvent> ResourceStateEvents(int projectId, int issueIid)
+        {
+            return _api.Get().GetAll<ResourceStateEvent>(string.Format(CultureInfo.InvariantCulture, ResourceStateEventUrl, projectId, issueIid));
+        }
+
+        public GitLabCollectionResponse<ResourceStateEvent> ResourceStateEventsAsync(int projectId, int issueIid)
+        {
+            return _api.Get().GetAllAsync<ResourceStateEvent>(string.Format(CultureInfo.InvariantCulture, ResourceStateEventUrl, projectId, issueIid));
         }
 
         public IEnumerable<MergeRequest> RelatedTo(int projectId, int issueIid)
@@ -140,6 +163,11 @@ namespace NGitLab.Impl
         public Task<TimeStats> TimeStatsAsync(int projectId, int issueIid, CancellationToken cancellationToken = default)
         {
             return _api.Get().ToAsync<TimeStats>(string.Format(CultureInfo.InvariantCulture, TimeStatsUrl, projectId, issueIid), cancellationToken);
+        }
+
+        public Task<Issue> CloneAsync(int projectId, int issueIid, IssueClone issueClone, CancellationToken cancellationToken = default)
+        {
+            return _api.Post().With(issueClone).ToAsync<Issue>(string.Format(CultureInfo.InvariantCulture, CloneIssueUrl, projectId, issueIid), cancellationToken);
         }
 
         private GitLabCollectionResponse<Issue> Get(string url, IssueQuery query)

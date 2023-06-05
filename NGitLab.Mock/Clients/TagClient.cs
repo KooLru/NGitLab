@@ -1,5 +1,10 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Net;
+using System.Threading;
+using System.Threading.Tasks;
+using NGitLab.Mock.Internals;
 using NGitLab.Models;
 using Commit = LibGit2Sharp.Commit;
 
@@ -37,6 +42,18 @@ namespace NGitLab.Mock.Clients
             }
         }
 
+        public Task<Tag> GetByNameAsync(string name, CancellationToken cancellationToken = default)
+        {
+            using (Context.BeginOperationScope())
+            {
+                var project = GetProject(_projectId, ProjectPermission.View);
+                var mockTag = project.Repository.GetTags().FirstOrDefault(t => t.FriendlyName.Equals(name, StringComparison.Ordinal));
+                if (mockTag is null)
+                    throw new GitLabException() { StatusCode = HttpStatusCode.NotFound };
+                return Task.FromResult(ToTagClient(mockTag));
+            }
+        }
+
         public void Delete(string name)
         {
             using (Context.BeginOperationScope())
@@ -62,6 +79,24 @@ namespace NGitLab.Mock.Clients
                 },
                 Message = tag.Annotation?.Message,
             };
+        }
+
+        public GitLabCollectionResponse<Models.Tag> GetAsync(TagQuery query)
+        {
+            using (Context.BeginOperationScope())
+            {
+                var result = GetProject(_projectId, ProjectPermission.View).Repository.GetTags();
+                if (query != null)
+                {
+                    if (!string.IsNullOrEmpty(query.Sort))
+                        throw new NotImplementedException();
+
+                    if (!string.IsNullOrEmpty(query.OrderBy))
+                        throw new NotImplementedException();
+                }
+
+                return GitLabCollectionResponse.Create(result.Select(tag => ToTagClient(tag)).ToArray());
+            }
         }
     }
 }
