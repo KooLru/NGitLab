@@ -139,6 +139,5 @@ namespace NGitLab.Impl
 
             _api.Post().Execute(url);
         }
-
     }
 }

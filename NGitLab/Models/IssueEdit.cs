@@ -47,7 +47,5 @@ namespace NGitLab.Models
         [JsonPropertyName("updated_at")]
         [JsonConverter(typeof(DateOnlyConverter))]
         public DateTime? UpdatedAt;
-        
-
     }
 }

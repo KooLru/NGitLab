@@ -20,6 +20,5 @@ namespace NGitLab.Models
         [JsonPropertyName("created_at")]
         [JsonConverter(typeof(DateTimeConverter))]
         public DateTime? CreatedAt;
-
     }
 }
