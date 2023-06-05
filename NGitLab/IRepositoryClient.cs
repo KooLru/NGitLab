@@ -48,5 +48,7 @@ namespace NGitLab
         IBranchClient Branches { get; }
 
         IProjectHooksClient ProjectHooks { get; }
+
+        void Changelog(RepositoryChangelogOptions options);
     }
 }

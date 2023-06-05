@@ -119,5 +119,26 @@ namespace NGitLab.Impl
 
             return url;
         }
+
+        public void Changelog(RepositoryChangelogOptions options)
+        {
+            var url = $"{_repoPath}/changelog";
+            url = Utils.AddParameter(url, "version", options.Version);
+            if (!string.IsNullOrWhiteSpace(options.Message))
+                url = Utils.AddParameter(url, "message", options.Message);
+            if (!string.IsNullOrWhiteSpace(options.Branch))
+                url = Utils.AddParameter(url, "branch", options.Branch);
+            if (!string.IsNullOrWhiteSpace(options.File))
+                url = Utils.AddParameter(url, "file", options.File);
+            if (!string.IsNullOrWhiteSpace(options.To))
+                url = Utils.AddParameter(url, "to", options.To);
+            if (!string.IsNullOrWhiteSpace(options.From))
+                url = Utils.AddParameter(url, "from", options.From);
+            if (!string.IsNullOrWhiteSpace(options.Trailer))
+                url = Utils.AddParameter(url, "trailer", options.Trailer);
+
+            _api.Post().Execute(url);
+        }
+
     }
 }
